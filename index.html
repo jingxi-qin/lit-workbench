@@ -348,6 +348,8 @@ footer{background:var(--bg2);border-top:1px solid var(--rule);padding:22px 0;col
       <button class="btn" style="background:var(--accent2);color:#fff;padding:7px 14px" onclick="openLocal(getRec(curKey))">📖 打开阅读</button>
       <button class="btn" style="background:#7c3aed;color:#fff;padding:7px 14px" onclick="extractLocal(getRec(curKey))">🪄 提取正文</button>
       <button class="btn ghost" style="padding:7px 14px" onclick="locateLocal(getRec(curKey))">📍 定位源文件</button>
+      <button class="btn" style="background:#0d9488;color:#fff;padding:7px 14px" onclick="aiSummarize(getRec(curKey))">🤖 一键 AI 总结</button>
+      <button class="btn ghost" style="padding:7px 14px" onclick="openAICfg()">⚙ AI 设置</button>
       <span id="srcHint" style="font-size:12px;color:var(--muted);align-self:center"></span>
     </div>
     <div id="mExtract" style="display:none;margin:4px 0 10px"></div>
@@ -393,6 +395,23 @@ footer{background:var(--bg2);border-top:1px solid var(--rule);padding:22px 0;col
     <div id="dupMsg" style="min-height:0;font-size:13px;margin-bottom:8px"></div>
     <div id="dupList" style="max-height:46vh;overflow:auto"></div>
     <div class="actions"><button class="btn ghost" onclick="closeDupCheck()">关闭</button></div>
+  </div>
+</div>
+
+<!-- AI 总结设置 -->
+<div class="overlay" id="aiOverlay">
+  <div class="modal">
+    <h3>🤖 AI 自动总结设置</h3>
+    <div class="mmeta">填一个大模型的 API Key，工作台的「一键 AI 总结」就能自动把每篇文献正文总结成统一格式的精炼汇总。推荐 DeepSeek（便宜、送额度）：到 platform.deepseek.com 注册→申请 API Key。<br>也可换通义/豆包/Kimi，格式都兼容；填「接口地址」与「模型名」即可。本地离线可选 Ollama（接口地址填 http://localhost:11434/v1，模型如 qwen2.5:7b，Key 可随便填）。</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+      <input type="password" id="aiKey" placeholder="API Key（本地保存，仅本机/你的网页使用）">
+      <input type="text" id="aiBase" placeholder="接口地址（默认 https://api.deepseek.com ）" value="https://api.deepseek.com">
+      <input type="text" id="aiModel" placeholder="模型（默认 deepseek-chat）" value="deepseek-chat">
+    </div>
+    <div class="actions">
+      <button class="btn ghost" onclick="closeAICfg()">取消</button>
+      <button class="btn primary" onclick="saveAICfg()">保存</button>
+    </div>
   </div>
 </div>
 
@@ -746,6 +765,67 @@ function setSrcHint(){
   if(!el) return;
   if(SERVER){ el.textContent='🔗 已连接本机文献中心：可打开 / 提取 / 定位源文件'; el.style.color='#16a34a'; }
   else { el.textContent='网页版：无法直接读取你电脑上的文献（要打开/提取，请用本机 server.py）'; el.style.color='var(--imp1)'; }
+}
+
+/* ================= AI 自动总结 ================= */
+function aiCfg(){
+  try{ return JSON.parse(localStorage.getItem('ai_cfg')||'{}')||{}; }catch(e){ return {}; }
+}
+function closeAICfg(){ document.getElementById('aiOverlay').classList.remove('open'); }
+function openAICfg(){
+  document.getElementById('aiKey').value = aiCfg().key||'';
+  document.getElementById('aiBase').value = aiCfg().base||'https://api.deepseek.com';
+  document.getElementById('aiModel').value = aiCfg().model||'deepseek-chat';
+  document.getElementById('aiOverlay').classList.add('open');
+}
+function saveAICfg(){
+  localStorage.setItem('ai_cfg', JSON.stringify({
+    key:(document.getElementById('aiKey').value||'').trim(),
+    base:(document.getElementById('aiBase').value||'https://api.deepseek.com').trim(),
+    model:(document.getElementById('aiModel').value||'deepseek-chat').trim()
+  }));
+  alert('已保存 AI 设置。回到文献详情，点「🤖 一键 AI 总结」即可。');
+  closeAICfg();
+}
+document.getElementById('aiOverlay').addEventListener('click',function(e){ if(e.target===this) closeAICfg(); });
+function fmtNL(t){ return '<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.65;background:#faf7f2;padding:10px;border-radius:8px;margin:8px 0">'+escapeHtml(t)+'</pre>'; }
+function aiSummarize(rr){
+  var cfg=aiCfg();
+  if(!cfg.key){ alert('请先点「⚙ AI 设置」填入一个大模型的 API Key。\n推荐：到 platform.deepseek.com 免费申请（新用户送额度）。'); openAICfg(); return; }
+  var el=document.getElementById('mExtract');
+  function show(html,color){ if(el){ el.style.display='block'; el.innerHTML=html; } }
+  show('<div class="mex-title" style="color:#0d9488">🤖 正在提取正文并调用大模型总结…（扫描版会先 OCR，可能需要几秒到一分钟）</div>');
+  var textPromise = resolvePath(rr)
+    .then(function(p){ return fetch('./extract?path='+encodeURIComponent(p),{method:'GET'}).then(function(r){ return r.json(); }); })
+    .then(function(o){ return (o&&o.text)||''; })
+    .catch(function(){ return ''; });
+  textPromise.then(function(text){
+    var use = text || (rr.summary||'').replace(/（已上传登记.*?。/g,'') || '';
+    if(!text && !use){ show('<div class="fio-err" style="color:#b91c1c">没有可用的正文/信息，请先用「🪄 提取正文」或「📖 打开阅读」确认这篇有内容。</div>'); return; }
+    var hasServer = !!SERVER;
+    var body, url, opt;
+    if(hasServer){
+      url='./ai_summary';
+      body={base:cfg.base, key:cfg.key, model:cfg.model, title:rr.title||'', text:use};
+      opt={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)};
+    } else {
+      url=(cfg.base+'/chat/completions');
+      body={model:cfg.model, messages:[
+        {role:'system', content:'请为以下运动训练学文献生成中文精炼汇总（这篇讲什么/实验设计与方法含所用工具量表/主要结果结论/可借鉴点，末尾附3-6个关键词）'},
+        {role:'user', content:'标题：'+(rr.title||'')+'\n\n正文：\n'+use}
+      ]};
+      opt={method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.key},body:JSON.stringify(body)};
+    }
+    fetch(url,opt).then(function(r){ return r.json(); }).then(function(data){
+      var out = hasServer ? data : {ok:true, text:((data&&data.choices&&data.choices[0]&&data.choices[0].message)||{}).content||''};
+      if(out&&out.ok&&out.text){
+        rr.summary=String(out.text).trim(); saveCustomOne(rr); renderCards();
+        show('<div class="mex-title" style="color:#16a34a">✅ AI 总结完成，已写入「📖 这篇文章讲什么」（点开卡片即可看到）</div>'+fmtNL(out.text));
+      } else {
+        show('<div class="fio-err" style="color:#b91c1c">'+(hasServer?((out&&out.error)||'调用失败'):'直连失败，多为浏览器跨域限制，请用本机 server.py 版')+'\n提示：检查 Key / 接口地址 / 模型名 / 网络。</div>');
+      }
+    }).catch(function(e){ show('<div class="fio-err" style="color:#b91c1c">'+escapeHtml(e.message||'调用失败')+'（网页版直连可能受浏览器跨域限制，建议用本机 server.py 版）</div>'); });
+  });
 }
 
 /* ================= 数据备份与跨设备同步（导出 / 导入） ================= */
