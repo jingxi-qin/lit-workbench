@@ -525,8 +525,8 @@ function renderCards(){
       + '<div class="tags"><span class="tag">'+escapeHtml(rr.cat)+'</span>'+(isNew?'<span class="tag newtag">新增</span>':'')+dateTag+refs+(rr.__src?'<span class="tag" style="background:#16a34a;color:#fff">✓ '+escapeHtml(rr.__src)+'命中</span>':'')+ (hasNote?'<span class="note-pin">● 有笔记</span>':'')+'</div>'
       + (SERVER?'<div class="fio-ops" style="display:flex;gap:6px;margin-top:8px">'
           +'<button class="btn" style="background:var(--accent2);color:#fff;font-size:12px;padding:4px 10px" onclick="event.stopPropagation();openLocal(getRec(\''+skey+'\'));return false;">📖 打开</button>'
-          +'<button class="btn" style="background:#7c3aed;color:#fff;font-size:12px;padding:4px 10px" onclick="event.stopPropagation();extractLocal(getRec(\''+skey+'\'));return false;">🪄 提取</button>'
-          +'<button class="btn ghost" style="font-size:12px;padding:4px 10px" onclick="event.stopPropagation();locateLocal(getRec(\''+skey+'\'));return false;">📍 定位</button>'
+          +'<button class="btn" style="background:#7c3aed;color:#fff;font-size:12px;padding:4px 10px" onclick="event.stopPropagation();openCard(\''+skey+'\');setTimeout(function(){extractLocal(getRec(\''+skey+'\'));},80);return false;">🪄 提取</button>'
+          +'<button class="btn ghost" style="font-size:12px;padding:4px 10px" onclick="event.stopPropagation();openCard(\''+skey+'\');setTimeout(function(){locateLocal(getRec(\''+skey+'\'));},80);return false;">📍 定位</button>'
           +'</div>':'')
       + '</div>';
   }).join('') || '<div class="empty">没有匹配的文献，请调整筛选条件。</div>';
