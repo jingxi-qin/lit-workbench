@@ -344,6 +344,13 @@ footer{background:var(--bg2);border-top:1px solid var(--rule);padding:22px 0;col
     <div class="usenote" id="mNote" style="display:none"></div>
     <div class="path" id="mPath"></div>
     <div class="mdate" id="mDate"></div>
+    <div class="fio-ops" style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px">
+      <button class="btn" style="background:var(--accent2);color:#fff;padding:7px 14px" onclick="openLocal(getRec(curKey))">📖 打开阅读</button>
+      <button class="btn" style="background:#7c3aed;color:#fff;padding:7px 14px" onclick="extractLocal(getRec(curKey))">🪄 提取正文</button>
+      <button class="btn ghost" style="padding:7px 14px" onclick="locateLocal(getRec(curKey))">📍 定位源文件</button>
+      <span id="srcHint" style="font-size:12px;color:var(--muted);align-self:center"></span>
+    </div>
+    <div id="mExtract" style="display:none;margin:4px 0 10px"></div>
     <label style="font-size:13px;color:var(--muted);font-weight:600">我的阅读笔记（自动保存到本机）</label>
     <textarea id="mNtext" placeholder="记录：本文核心观点、可用于论文哪一部分、实验方法与你的借鉴…"></textarea>
     <div class="actions">
@@ -379,7 +386,12 @@ footer{background:var(--bg2);border-top:1px solid var(--rule);padding:22px 0;col
   <div class="modal">
     <h3>⚖ 查重审核</h3>
     <div class="mmeta">按标题自动归组，同组为可能重复的文献。内置条目（资料库底稿）不可在此删除；仅「上传 / 新增」的条目可删除。标题完全相同的重复项在上传 / 新增时会自动拦截。</div>
-    <div id="dupList" style="max-height:52vh;overflow:auto"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <button class="btn primary" style="padding:7px 14px" onclick="cleanDupNow()">🧹 一键清理上传重复（每组保留 1 条）</button>
+      <button class="btn ghost" onclick="renderDupList()">↻ 刷新</button>
+    </div>
+    <div id="dupMsg" style="min-height:0;font-size:13px;margin-bottom:8px"></div>
+    <div id="dupList" style="max-height:46vh;overflow:auto"></div>
     <div class="actions"><button class="btn ghost" onclick="closeDupCheck()">关闭</button></div>
   </div>
 </div>
@@ -510,7 +522,12 @@ function renderCards(){
       + '<h4>'+escapeHtml(rr.title)+'</h4>'
       + (rr.summary?'<div class="sum">'+escapeHtml(rr.summary)+'</div>':'')
       + '<div class="meta">'+(rr.author?'<b>'+escapeHtml(rr.author)+'</b> ':'')+(rr.year||'年代待补')+(rr.inst?' · '+escapeHtml(rr.inst):'')+'</div>'
-      + '<div class="tags"><span class="tag">'+escapeHtml(rr.cat)+'</span>'+(isNew?'<span class="tag newtag">新增</span>':'')+dateTag+refs+(rr.__src?'<span class="tag" style="background:#16a34a;color:#fff">✓ '+escapeHtml(rr.__src)+'命中</span>':'')+(hasNote?'<span class="note-pin">● 有笔记</span>':'')+'</div>'
+      + '<div class="tags"><span class="tag">'+escapeHtml(rr.cat)+'</span>'+(isNew?'<span class="tag newtag">新增</span>':'')+dateTag+refs+(rr.__src?'<span class="tag" style="background:#16a34a;color:#fff">✓ '+escapeHtml(rr.__src)+'命中</span>':'')+ (hasNote?'<span class="note-pin">● 有笔记</span>':'')+'</div>'
+      + (SERVER?'<div class="fio-ops" style="display:flex;gap:6px;margin-top:8px">'
+          +'<button class="btn" style="background:var(--accent2);color:#fff;font-size:12px;padding:4px 10px" onclick="event.stopPropagation();openLocal(getRec(\''+skey+'\'));return false;">📖 打开</button>'
+          +'<button class="btn" style="background:#7c3aed;color:#fff;font-size:12px;padding:4px 10px" onclick="event.stopPropagation();extractLocal(getRec(\''+skey+'\'));return false;">🪄 提取</button>'
+          +'<button class="btn ghost" style="font-size:12px;padding:4px 10px" onclick="event.stopPropagation();locateLocal(getRec(\''+skey+'\'));return false;">📍 定位</button>'
+          +'</div>':'')
       + '</div>';
   }).join('') || '<div class="empty">没有匹配的文献，请调整筛选条件。</div>';
 }
@@ -536,9 +553,11 @@ function openCard(key){
   var nEl=document.getElementById('mNote');
   if(rr.note){ nEl.style.display='block'; nEl.textContent='论文用途：'+rr.note; } else { nEl.style.display='none'; }
   var pEl=document.getElementById('mPath');
-  if(rr.path){ pEl.innerHTML='源文件：<span>'+escapeHtml(rr.fn||rr.title)+'</span><br><a class="open-src" href="#" onclick="openSource();return false;">↗ 打开本地源文件</a>'; }
+  if(rr.path){ pEl.innerHTML='源文件：<span>'+escapeHtml(rr.fn||rr.title)+'</span> · <a class="open-src" href="#" onclick="openLocal(getRec(curKey));return false;">↗ 打开阅读</a>'; }
   else { pEl.innerHTML='此条为手动新增记录，暂无源文件。'; }
   document.getElementById('mNtext').value=NOTES[key]||'';
+  var mex=document.getElementById('mExtract'); if(mex) mex.style.display='none';
+  setSrcHint();
   document.getElementById('overlay').classList.add('open');
 }
 function openSource(){ var rr=getRec(curKey); if(rr&&rr.path){ try{ window.open('file:///'+rr.path.replace(/\\/g,'/')); }catch(e){ alert('请手动打开：\n'+rr.path); } } }
@@ -619,27 +638,115 @@ function dupGroups(){
   return groups;
 }
 function closeDupCheck(){ document.getElementById('dupOverlay').classList.remove('open'); }
-function openDupCheck(){
+function renderDupList(){
   var groups=dupGroups();
   var el=document.getElementById('dupList');
-  if(!groups.length){ el.innerHTML='<div class="empty">🎉 未发现重复文献，资料库很干净。</div>'; }
-  else{
-    el.innerHTML=groups.map(function(g){
-      return '<div class="dup-group" style="border:1px solid #e7b978;border-radius:10px;padding:10px 12px;margin-bottom:10px">'
-       +'<div style="font-weight:700;margin-bottom:6px;color:#92400e">'+g.length+' 条可能重复：'+escapeHtml(g[0].title.slice(0,44))+'…</div>'
-       +g.map(function(rr){
-          var isCustom=!!rr.uploadDate;
-          return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed #f0e0c8;font-size:13px">'
-            +'<span style="flex:1">'+escapeHtml(rr.title)+(rr.author?'<span style="color:#999"> · '+escapeHtml(rr.author)+'</span>':'')+(rr.year?'<span style="color:#999"> · '+rr.year+'</span>':'')+(isCustom?'':'<span style="color:#b45309;font-size:12px;margin-left:6px">[内置]</span>')+'</span>'
-            +(isCustom?'<button class="btn ghost" style="padding:2px 9px;font-size:12px;color:#b91c1c;border-color:#f0c2c2" onclick="delCustomDup(\''+rr.id+'\')">删除</button>':'')
-          +'</div>';
-        }).join('')+'</div>';
-    }).join('');
-  }
-  document.getElementById('dupOverlay').classList.add('open');
+  var msg=document.getElementById('dupMsg'); if(msg) msg.textContent='';
+  if(!groups.length){ el.innerHTML='<div class="empty">🎉 未发现重复文献，资料库很干净。</div>'; return; }
+  el.innerHTML=groups.map(function(g){
+    return '<div class="dup-group" style="border:1px solid #e7b978;border-radius:10px;padding:10px 12px;margin-bottom:10px">'
+     +'<div style="font-weight:700;margin-bottom:6px;color:#92400e">'+g.length+' 条可能重复：'+escapeHtml(g[0].title.slice(0,44))+'…</div>'
+     +g.map(function(rr){
+        var isCustom=!!rr.uploadDate;
+        return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed #f0e0c8;font-size:13px">'
+          +'<span style="flex:1">'+escapeHtml(rr.title)+(rr.author?'<span style="color:#999"> · '+escapeHtml(rr.author)+'</span>':'')+(rr.year?'<span style="color:#999"> · '+rr.year+'</span>':'')+(isCustom?'':'<span style="color:#b45309;font-size:12px;margin-left:6px">[内置]</span>')+'</span>'
+          +(isCustom?'<button class="btn ghost" style="padding:2px 9px;font-size:12px;color:#b91c1c;border-color:#f0c2c2" onclick="delCustomDup(\''+rr.id+'\')">删除</button>':'')
+        +'</div>';
+      }).join('')+'</div>';
+  }).join('');
 }
-function delCustomDup(key){ delCustom(key); openDupCheck(); }
+function openDupCheck(){ renderDupList(); document.getElementById('dupOverlay').classList.add('open'); }
+function delCustomDup(key){ delCustom(key); renderDupList(); }
+function cleanDupNow(){
+  var groups=dupGroups();
+  var keep={}, delCount=0;
+  groups.forEach(function(g){
+    var builtin=g.filter(function(x){ return !x.uploadDate; });
+    var keepRec = builtin.length ? builtin[0]
+      : g.slice().sort(function(a,b){ return ((b.summary||'').length+(b.note||'').length) - ((a.summary||'').length+(a.note||'').length); })[0] || g[0];
+    keep[keepRec.id]=1;
+    g.forEach(function(x){ if(x.uploadDate && !keep[x.id]) delCount++; });
+  });
+  var msg=document.getElementById('dupMsg');
+  if(!delCount){ if(msg){ msg.style.color='#16a34a'; msg.textContent='没有可自动清理的上传重复（内置条目请人工判断）。'; } return; }
+  if(!confirm('将删除 '+delCount+' 条重复的上传/新增文献，每组保留 1 条（有内置条目的组保留内置，其余保留信息较全的一条）。\n\n确定清理吗？')) return;
+  var toDel={};
+  groups.forEach(function(g){ g.forEach(function(x){ if(x.uploadDate && !keep[x.id]) toDel[String(x.id)]=1; }); });
+  CUSTOM=CUSTOM.filter(function(x){ return !toDel[String(x.id)]; });
+  localStorage.setItem('lit_custom',JSON.stringify(CUSTOM)); pushRemote();
+  refreshCounts(); renderCards(); renderDupList();
+  if(msg){ msg.style.color='#16a34a'; msg.textContent='✅ 已清理 '+delCount+' 条上传重复。'; }
+}
 document.getElementById('dupOverlay').addEventListener('click',function(e){ if(e.target===this) closeDupCheck(); });
+
+/* ================= 本地文献中心（打开阅读 / 提取正文 / 定位源文件） ================= */
+var SERVER=null;
+function serverBase(){ return window.location.origin || ''; }
+function saveCustomOne(rr){
+  for(var i=0;i<CUSTOM.length;i++){ if(String(CUSTOM[i].id)===String(rr.id)){ CUSTOM[i]=rr; break; } }
+  localStorage.setItem('lit_custom',JSON.stringify(CUSTOM)); pushRemote();
+}
+function serverUpload(file){
+  if(!SERVER) return Promise.reject(new Error('未连接本地文献中心'));
+  return fetch('./upload',{method:'POST',headers:{'X-FileName':encodeURIComponent(file.name||'文献')},body:file})
+    .then(function(r){ return r.json(); }).then(function(o){ if(o&&o.ok) return o.path; throw new Error('上传失败'); });
+}
+function resolvePath(rr){
+  if(rr && rr.path && rr.path!=='') return Promise.resolve(rr.path);
+  if(!SERVER) return Promise.reject(new Error('当前是网页版，无法读取你电脑上的文件。请在本机用 server.py 打开 localhost 版本。'));
+  var nm=(rr&&(rr.title||rr.fn))||'';
+  return fetch('./find?name='+encodeURIComponent(nm),{method:'GET'}).then(function(r){ return r.json(); })
+    .then(function(o){
+      var arr=(o&&o.results)||[];
+      if(arr.length){ rr.path=arr[0]; saveCustomOne(rr); return arr[0]; }
+      throw new Error('在可访问文件夹里没找到该文献的源文件。\n请确认它的真实文件在这些文件夹里，或在 folders.txt 里把所在文件夹添加进去，然后点「重启服务」。');
+    });
+}
+function openLocal(rr){
+  resolvePath(rr).then(function(p){ window.open('./open?path='+encodeURIComponent(p)); })
+    .catch(function(e){ alert(e.message||'无法打开'); });
+}
+function locateLocal(rr){
+  if(!SERVER){ alert('当前是网页版，无法定位你电脑上的文件。请在本机用 server.py 打开 localhost 版本。'); return; }
+  var nm=(rr&&(rr.title||rr.fn))||'';
+  fetch('./find?name='+encodeURIComponent(nm),{method:'GET'}).then(function(r){ return r.json(); })
+    .then(function(o){ var arr=(o&&o.results)||[]; if(arr.length){ rr.path=arr[0]; saveCustomOne(rr); alert('✅ 已定位源文件：\n'+arr[0]+'\n可点「📖 打开阅读」。'); } else alert('在可访问文件夹里没找到该文献的源文件，请检查 folders.txt 范围。'); })
+    .catch(function(e){ alert(e.message||'定位失败'); });
+}
+function extractLocal(rr){
+  if(!SERVER){ alert('当前是网页版，无法读取你电脑上的文献文件。\n请在本机用 server.py 打开 localhost 版本，或用下面的「阅读笔记」直接摘录关键内容。'); return; }
+  var el=document.getElementById('mExtract');
+  el.style.display='block'; el.innerHTML='<div class="mex-title">🪄 正在提取正文…</div>';
+  resolvePath(rr).then(function(p){
+    return fetch('./extract?path='+encodeURIComponent(p),{method:'GET'}).then(function(r){ return r.json(); });
+  }).then(function(o){
+    if(o&&o.ok&&o.text){
+      el.innerHTML='<div class="mex-title">🪄 正文提取（'+o.text.length+' 字符，源文件：'+(o.path||'')+'）</div>'
+        +'<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.65;max-height:46vh;overflow:auto;background:#faf7f2;padding:12px;border-radius:8px;margin:8px 0">'+escapeHtml(o.text)+'</pre>'
+        +'<div class="actions"><button class="btn primary" style="padding:7px 14px;border-radius:8px" onclick="copyExtract()">复制正文，发给 TRAE 让我精炼总结</button></div>';
+    } else {
+      el.innerHTML='<div class="fio-err" style="color:#b91c1c;font-size:13px">'+(o&&o.error?escapeHtml(o.error):'提取失败。若为扫描版 PDF，请把文件发给 TRAE 由我解析。')+'</div>';
+    }
+  }).catch(function(e){ el.innerHTML='<div class="fio-err" style="color:#b91c1c;font-size:13px">'+escapeHtml(e.message||'提取失败')+'</div>'; });
+}
+function copyExtract(){
+  var pre=document.querySelector('#mExtract pre');
+  if(!pre){ alert('暂无正文可复制。'); return; }
+  var t=pre.textContent;
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(function(){ alert('已复制正文('+t.length+'字)。请在 TRAE 里粘贴给我，我会一并生成精炼汇总和用途标签。'); }); }
+  else { prompt('请手动复制下方正文（Ctrl+C）：', t); }
+}
+function probeServer(){
+  if(!window.fetch) return;
+  fetch('./roots',{method:'GET'}).then(function(r){ if(!r.ok) throw 0; return r.json(); })
+    .then(function(o){ if(o&&o.server==='lit'){ SERVER=o; setSrcHint(); } }).catch(function(){ SERVER=null; setSrcHint(); });
+}
+function setSrcHint(){
+  var el=document.getElementById('srcHint');
+  if(!el) return;
+  if(SERVER){ el.textContent='🔗 已连接本机文献中心：可打开 / 提取 / 定位源文件'; el.style.color='#16a34a'; }
+  else { el.textContent='网页版：无法直接读取你电脑上的文献（要打开/提取，请用本机 server.py）'; el.style.color='var(--imp1)'; }
+}
 
 /* ================= 数据备份与跨设备同步（导出 / 导入） ================= */
 function exportData(){
@@ -969,6 +1076,7 @@ document.getElementById('fileUp').addEventListener('change',function(){
     }
     var rec={id:'c'+Date.now()+'_'+idx, title:stripExt(f.name), author:'', year:null, cat:'新上传', imp:1, type:extLabel(f.name), summary:'（已上传登记，待补全“这篇讲什么”的精炼汇总——把该文件发给我，我会解析并生成与其它文献一致的汇总。）', refs:[], note:'', ext:'new', uploadDate:new Date().toISOString()};
     CUSTOM.push(rec); localStorage.setItem('lit_custom',JSON.stringify(CUSTOM)); pushRemote();
+    if(SERVER){ serverUpload(f).then(function(p){ rec.path=p; saveCustomOne(rec); }).catch(function(){}); }
     ok++;
     function doneSaved(){ saved++; next(); }
     function doneFail(){ fail++; next(); }
@@ -986,6 +1094,7 @@ document.getElementById('impFile').addEventListener('change',function(){
 heroBadges(); catCards(); initFilters(); renderCards(); renderRefmap();
 (function(){ try{ var n=localStorage.getItem('ws_folder_name'); if(n) document.getElementById('wsFolderStatus').textContent='上次使用：'+n+'（本次需重新授权）'; }catch(e){} }());
 bootSync();
+probeServer();
 cloudBoot();
 </script>
 </body>
