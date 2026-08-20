@@ -702,11 +702,13 @@ function dupGroups(){
       if(a.length>=6&&b.length>=6&&(a.indexOf(b)>=0||b.indexOf(a)>=0)) uni(i,j,'标题互相包含');
     }
   }
-  /* 4) 内容摘要相同或互相包含（≥20字） */
+  /* 4) 内容摘要相同或互相包含（≥20字）；跳过占位摘要（未总结的上传条目） */
+  function isPlaceholder(s){ return /已上传登记|待补全/.test(s||''); }
   for(var i=0;i<n;i++){
     for(var j=i+1;j<n;j++){
       var si=normT(items[i].summary||''), sj=normT(items[j].summary||'');
       if(si.length<20||sj.length<20) continue;
+      if(isPlaceholder(items[i].summary)||isPlaceholder(items[j].summary)) continue;
       if(si===sj||si.indexOf(sj)>=0||sj.indexOf(si)>=0) uni(i,j,'内容摘要相同');
     }
   }
