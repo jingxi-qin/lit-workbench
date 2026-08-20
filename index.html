@@ -739,7 +739,7 @@ function copyExtract(){
 function probeServer(){
   if(!window.fetch) return;
   fetch('./roots',{method:'GET'}).then(function(r){ if(!r.ok) throw 0; return r.json(); })
-    .then(function(o){ if(o&&o.server==='lit'){ SERVER=o; setSrcHint(); } }).catch(function(){ SERVER=null; setSrcHint(); });
+    .then(function(o){ if(o&&o.server==='lit'){ SERVER=o; setSrcHint(); renderCards(); } }).catch(function(){ SERVER=null; setSrcHint(); });
 }
 function setSrcHint(){
   var el=document.getElementById('srcHint');
